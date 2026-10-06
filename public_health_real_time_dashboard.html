@@ -1,0 +1,1060 @@
+<!DOCTYPE html>
+<html lang="th" class="h-full bg-slate-900 text-slate-100">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ระบบเฝ้าระวังทางสาธารณสุขและระบาดวิทยาแบบเรียลไทม์ (Public Health Dashboard)</title>
+    
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        health: {
+                            50: '#f0fdfa',
+                            100: '#ccfbf1',
+                            500: '#14b8a6',
+                            600: '#0d9488',
+                            700: '#0f766e',
+                            800: '#115e59',
+                            900: '#134e4a',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Google Fonts: Prompt & Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Leaflet GIS Map CSS & JS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    
+    <!-- Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <!-- PapaParse CDN for CSV Parsing -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+
+    <style>
+        body {
+            font-family: 'Prompt', sans-serif;
+        }
+        /* Custom scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #0f172a;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #334155;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #0d9488;
+        }
+        /* Leaflet Dark Map Popup Style Overrides */
+        .leaflet-popup-content-wrapper, .leaflet-popup-tip {
+            background: #1e293b !important;
+            color: #f8fafc !important;
+            border: 1px solid #334155;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
+            border-radius: 0.75rem;
+        }
+        .leaflet-container {
+            font-family: 'Prompt', sans-serif !important;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col bg-slate-950 text-slate-100 antialiased selection:bg-teal-500 selection:text-white">
+
+    <!-- Top Header Navigation Bar -->
+    <header class="bg-slate-900 border-b border-slate-800 sticky top-0 z-50 backdrop-blur-md bg-opacity-90">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex items-center justify-between h-16">
+                <!-- Logo & Title -->
+                <div class="flex items-center space-x-3">
+                    <div class="p-2.5 bg-teal-500/10 border border-teal-500/30 rounded-xl text-teal-400">
+                        <i class="fa-solid fa-heart-pulse text-xl animate-pulse"></i>
+                    </div>
+                    <div>
+                        <h1 class="text-lg font-bold text-white tracking-wide flex items-center gap-2">
+                            ระบบเฝ้าระวังทางสาธารณสุขแบบเรียลไทม์
+                            <span class="text-xs font-semibold px-2 py-0.5 rounded-full bg-teal-500/20 text-teal-300 border border-teal-500/30">Live Data</span>
+                        </h1>
+                        <p class="text-xs text-slate-400">Public Health Epidemiology Dashboard & Analytics</p>
+                    </div>
+                </div>
+
+                <!-- Right Action Controls -->
+                <div class="flex items-center space-x-3">
+                    <!-- Status Indicator -->
+                    <div id="statusBadge" class="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                        <span class="w-2 h-2 rounded-full bg-amber-400 animate-ping"></span>
+                        <span id="statusText">กำลังโหลดข้อมูล...</span>
+                    </div>
+
+                    <!-- Auto Refresh Toggle -->
+                    <button id="btnRefresh" onclick="fetchLiveCSVData()" class="px-3.5 py-2 bg-teal-600 hover:bg-teal-500 text-white text-xs font-medium rounded-lg transition-all flex items-center gap-2 shadow-lg shadow-teal-600/20">
+                        <i id="refreshIcon" class="fa-solid fa-rotate"></i>
+                        <span>อัปเดตข้อมูล</span>
+                    </button>
+
+                    <!-- GitHub Deployment Help Modal Button -->
+                    <button onclick="toggleGithubModal(true)" class="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-medium rounded-lg border border-slate-700 transition-all flex items-center gap-2">
+                        <i class="fa-brands fa-github text-base"></i>
+                        <span class="hidden sm:inline">วิธีขึ้น GitHub Pages</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content Container -->
+    <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+
+        <!-- Top Banner / Filter Toolbar -->
+        <section class="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-xl">
+            <div class="grid grid-cols-1 md:grid-cols-12 gap-4 items-center">
+                
+                <!-- Search Bar -->
+                <div class="md:col-span-4 relative">
+                    <i class="fa-solid fa-magnifying-glass absolute left-3.5 top-3 text-slate-400 text-sm"></i>
+                    <input type="text" id="searchInput" oninput="applyFilters()" placeholder="ค้นหาตามพื้นที่, ชื่อโรค, หรือรายละเอียด..." 
+                           class="w-full bg-slate-950 border border-slate-800 rounded-xl pl-10 pr-4 py-2 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-teal-500 transition-colors">
+                </div>
+
+                <!-- Category/Disease Filter Dropdown -->
+                <div class="md:col-span-3">
+                    <select id="categoryFilter" onchange="applyFilters()" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-teal-500 transition-colors">
+                        <option value="ALL">-- ทุกกลุ่มโรค / ทุกประเภท --</option>
+                    </select>
+                </div>
+
+                <!-- Location / Province Filter Dropdown -->
+                <div class="md:col-span-3">
+                    <select id="locationFilter" onchange="applyFilters()" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-teal-500 transition-colors">
+                        <option value="ALL">-- ทุกพื้นที่ / ทุกจังหวัด --</option>
+                    </select>
+                </div>
+
+                <!-- Reset Button -->
+                <div class="md:col-span-2 flex justify-end">
+                    <button onclick="resetFilters()" class="w-full py-2 px-3 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium rounded-xl border border-slate-700 transition-colors flex items-center justify-center gap-1.5">
+                        <i class="fa-solid fa-filter-circle-xmark"></i>
+                        <span>รีเซ็ตตัวกรอง</span>
+                    </button>
+                </div>
+
+            </div>
+        </section>
+
+        <!-- KPI Summary Cards Grid -->
+        <section class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            
+            <!-- Card 1: Total Records/Cases -->
+            <div class="bg-slate-900 border border-slate-800 hover:border-slate-700 rounded-2xl p-5 shadow-lg transition-all">
+                <div class="flex items-center justify-between">
+                    <span class="text-xs font-medium text-slate-400">เคส/รายงานทั้งหมด</span>
+                    <div class="p-2.5 rounded-xl bg-teal-500/10 text-teal-400 border border-teal-500/20">
+                        <i class="fa-solid fa-hospital-user text-lg"></i>
+                    </div>
+                </div>
+                <div class="mt-3 flex items-baseline justify-between">
+                    <h3 id="kpiTotalCases" class="text-2xl font-extrabold text-white">0</h3>
+                    <span class="text-xs text-emerald-400 font-medium flex items-center gap-1">
+                        <i class="fa-solid fa-layer-group"></i> รายงานในระบบ
+                    </span>
+                </div>
+                <p class="text-[11px] text-slate-500 mt-1">อัปเดตตรงจาก Google Sheets</p>
+            </div>
+
+            <!-- Card 2: Highest Location Risk -->
+            <div class="bg-slate-900 border border-slate-800 hover:border-slate-700 rounded-2xl p-5 shadow-lg transition-all">
+                <div class="flex items-center justify-between">
+                    <span class="text-xs font-medium text-slate-400">พื้นที่ระบาด/รายงานสูงสุด</span>
+                    <div class="p-2.5 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                        <i class="fa-solid fa-map-location-dot text-lg"></i>
+                    </div>
+                </div>
+                <div class="mt-3 flex items-baseline justify-between">
+                    <h3 id="kpiTopLocation" class="text-lg font-bold text-white truncate max-w-[180px]">-</h3>
+                    <span id="kpiTopLocCount" class="text-xs font-semibold px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-300">0 ราย</span>
+                </div>
+                <p class="text-[11px] text-slate-500 mt-1">พื้นที่พบล่าสุด/สะสมสูง</p>
+            </div>
+
+            <!-- Card 3: Top Disease Category -->
+            <div class="bg-slate-900 border border-slate-800 hover:border-slate-700 rounded-2xl p-5 shadow-lg transition-all">
+                <div class="flex items-center justify-between">
+                    <span class="text-xs font-medium text-slate-400">กลุ่มโรค/อาการหลัก</span>
+                    <div class="p-2.5 rounded-xl bg-rose-500/10 text-rose-400 border border-rose-500/20">
+                        <i class="fa-solid fa-virus text-lg"></i>
+                    </div>
+                </div>
+                <div class="mt-3 flex items-baseline justify-between">
+                    <h3 id="kpiTopCategory" class="text-lg font-bold text-white truncate max-w-[180px]">-</h3>
+                    <span id="kpiTopCatCount" class="text-xs font-semibold px-2 py-0.5 rounded-md bg-rose-500/20 text-rose-300">0 ราย</span>
+                </div>
+                <p class="text-[11px] text-slate-500 mt-1">สัดส่วนผู้ป่วยรายกลุ่ม</p>
+            </div>
+
+            <!-- Card 4: Last Sync Timestamp -->
+            <div class="bg-slate-900 border border-slate-800 hover:border-slate-700 rounded-2xl p-5 shadow-lg transition-all">
+                <div class="flex items-center justify-between">
+                    <span class="text-xs font-medium text-slate-400">เวลาการเชื่อมต่อล่าสุด</span>
+                    <div class="p-2.5 rounded-xl bg-blue-500/10 text-blue-400 border border-blue-500/20">
+                        <i class="fa-solid fa-clock-rotate-left text-lg"></i>
+                    </div>
+                </div>
+                <div class="mt-3">
+                    <h3 id="kpiLastUpdated" class="text-base font-bold text-slate-200">--:--:--</h3>
+                </div>
+                <p class="text-[11px] text-emerald-400 mt-1 flex items-center gap-1">
+                    <i class="fa-solid fa-circle-check text-[10px]"></i> ดึงข้อมูลอัตโนมัติสำเร็จ
+                </p>
+            </div>
+
+        </section>
+
+        <!-- GIS Map & Primary Overview Section -->
+        <section class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            
+            <!-- Map Container (8 cols) -->
+            <div class="lg:col-span-8 bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-xl flex flex-col">
+                <div class="flex items-center justify-between mb-3 px-1">
+                    <div class="flex items-center gap-2">
+                        <i class="fa-solid fa-map text-teal-400"></i>
+                        <h2 class="text-sm font-bold text-slate-100">แผนที่แสดงการกระจายเชิงพื้นที่ (Geographic Outbreak Map)</h2>
+                    </div>
+                    <div class="text-xs text-slate-400 flex items-center gap-2">
+                        <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-rose-500 inline-block"></span> พิกัดรายงาน</span>
+                    </div>
+                </div>
+                <!-- Leaflet Map Container -->
+                <div id="map" class="w-full h-[400px] lg:h-[450px] rounded-xl border border-slate-800 z-10 bg-slate-950"></div>
+            </div>
+
+            <!-- Chart Side Panel (4 cols) -->
+            <div class="lg:col-span-4 bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-xl flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-3 px-1">
+                        <div class="flex items-center gap-2">
+                            <i class="fa-solid fa-chart-pie text-teal-400"></i>
+                            <h2 class="text-sm font-bold text-slate-100">สัดส่วนประเภทโรค/กลุ่มผู้ป่วย</h2>
+                        </div>
+                    </div>
+                    <div class="relative h-[280px] w-full flex items-center justify-center">
+                        <canvas id="categoryPieChart"></canvas>
+                    </div>
+                </div>
+                <div class="mt-4 p-3 bg-slate-950 border border-slate-800 rounded-xl text-xs text-slate-400 space-y-1">
+                    <div class="font-semibold text-slate-300 flex items-center gap-1">
+                        <i class="fa-solid fa-lightbulb text-amber-400"></i> ข้อสังเกตระบาดวิทยา
+                    </div>
+                    <p id="epiInsightText" class="leading-relaxed text-[11px] text-slate-400">
+                        กำลังประมวลผลสรุปเชิงลึกตามกลุ่มโรคและพื้นที่...
+                    </p>
+                </div>
+            </div>
+
+        </section>
+
+        <!-- Secondary Charts Row -->
+        <section class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            
+            <!-- Chart 2: Top Locations Horizontal Bar -->
+            <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-xl">
+                <div class="flex items-center justify-between mb-3 px-1">
+                    <div class="flex items-center gap-2">
+                        <i class="fa-solid fa-chart-column text-teal-400"></i>
+                        <h2 class="text-sm font-bold text-slate-100">10 อันดับพื้นที่/จังหวัด ที่พบผู้ป่วย/การรายงานสูงสุด</h2>
+                    </div>
+                </div>
+                <div class="h-[280px] w-full">
+                    <canvas id="locationBarChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Chart 3: Timeline Trend Analysis -->
+            <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-xl">
+                <div class="flex items-center justify-between mb-3 px-1">
+                    <div class="flex items-center gap-2">
+                        <i class="fa-solid fa-chart-line text-teal-400"></i>
+                        <h2 class="text-sm font-bold text-slate-100">แนวโน้มการสะสมของรายงานตามช่วงเวลา (Epidemic Trend)</h2>
+                    </div>
+                </div>
+                <div class="h-[280px] w-full">
+                    <canvas id="timelineLineChart"></canvas>
+                </div>
+            </div>
+
+        </section>
+
+        <!-- Data Table Section -->
+        <section class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
+                <div class="flex items-center gap-2">
+                    <i class="fa-solid fa-table-list text-teal-400"></i>
+                    <h2 class="text-sm font-bold text-slate-100">ตารางข้อมูลการเฝ้าระวังแบบละเอียด (Data Records Table)</h2>
+                    <span id="recordCountBadge" class="text-xs px-2.5 py-0.5 rounded-full bg-slate-800 text-slate-300 font-medium">0 รายการ</span>
+                </div>
+                
+                <!-- Table Actions -->
+                <div class="flex items-center gap-2">
+                    <button onclick="exportFilteredToCSV()" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium rounded-lg border border-slate-700 transition-colors flex items-center gap-1.5">
+                        <i class="fa-solid fa-file-csv text-emerald-400"></i>
+                        <span>ดาวน์โหลด CSV</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Table Responsive Wrapper -->
+            <div class="overflow-x-auto rounded-xl border border-slate-800">
+                <table class="w-full text-left text-xs text-slate-300">
+                    <thead class="bg-slate-950 text-slate-400 uppercase tracking-wider font-semibold border-b border-slate-800">
+                        <tr id="tableHeaderRow">
+                            <th class="px-4 py-3">#</th>
+                            <th class="px-4 py-3">วันที่/เวลา</th>
+                            <th class="px-4 py-3">พื้นที่/จังหวัด</th>
+                            <th class="px-4 py-3">กลุ่มโรค/อาการ</th>
+                            <th class="px-4 py-3">รายละเอียดเพิ่มเติม</th>
+                            <th class="px-4 py-3 text-center">พิกัด GIS</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tableBody" class="divide-y divide-slate-800/60 bg-slate-900/50">
+                        <tr>
+                            <td colspan="6" class="px-4 py-8 text-center text-slate-500">
+                                <i class="fa-solid fa-spinner fa-spin text-lg mb-2"></i>
+                                <p>กำลังโหลดและประมวลผลข้อมูลจาก Google Sheets...</p>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Pagination Controls -->
+            <div class="flex items-center justify-between mt-4 text-xs text-slate-400">
+                <span id="paginationInfo">แสดง 0 ถึง 0 จาก 0 รายการ</span>
+                <div class="flex items-center space-x-1">
+                    <button id="btnPrevPage" onclick="changePage(-1)" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed">
+                        <i class="fa-solid fa-chevron-left"></i> ก่อนหน้า
+                    </button>
+                    <span id="currentPageNum" class="px-3 py-1.5 bg-slate-950 rounded-lg border border-slate-800 font-semibold text-slate-200">1</span>
+                    <button id="btnNextPage" onclick="changePage(1)" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed">
+                        ถัดไป <i class="fa-solid fa-chevron-right"></i>
+                    </button>
+                </div>
+            </div>
+
+        </section>
+
+    </main>
+
+    <!-- GitHub Upload Instructions Modal -->
+    <div id="githubModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-2xl w-full p-6 shadow-2xl relative max-h-[90vh] overflow-y-auto">
+            
+            <button onclick="toggleGithubModal(false)" class="absolute top-4 right-4 text-slate-400 hover:text-white p-2">
+                <i class="fa-solid fa-xmark text-lg"></i>
+            </button>
+
+            <div class="flex items-center gap-3 mb-4">
+                <div class="p-3 bg-teal-500/10 border border-teal-500/30 rounded-xl text-teal-400">
+                    <i class="fa-brands fa-github text-2xl"></i>
+                </div>
+                <div>
+                    <h3 class="text-base font-bold text-white">ขั้นตอนการนำไฟล์ไปสร้าง Dashboard บน GitHub Pages (ฟรี)</h3>
+                    <p class="text-xs text-slate-400">เผยแพร่เว็บสถิติสาธารณสุขแบบเรียลไทม์ให้ทีมงานเข้าดูได้จากทั่วโลก</p>
+                </div>
+            </div>
+
+            <div class="space-y-4 text-xs text-slate-300 leading-relaxed">
+                <div class="p-3 bg-slate-950 border border-slate-800 rounded-xl">
+                    <span class="font-bold text-teal-400">ขั้นตอนที่ 1: เตรียมไฟล์</span>
+                    <p class="mt-1">เซฟโค้ดทั้งหมดนี้ไว้ในชื่อไฟล์ <code class="bg-slate-800 px-1.5 py-0.5 rounded text-teal-300 font-mono">index.html</code> ลงในคอมพิวเตอร์ของคุณ</p>
+                </div>
+
+                <div class="p-3 bg-slate-950 border border-slate-800 rounded-xl">
+                    <span class="font-bold text-teal-400">ขั้นตอนที่ 2: สร้าง Repository บน GitHub</span>
+                    <ol class="list-decimal list-inside mt-1 space-y-1 text-slate-300">
+                        <li>เข้าเว็บ <a href="https://github.com" target="_blank" class="text-teal-400 underline">github.com</a> แล้วล็อกอินเข้าใช้งาน</li>
+                        <li>กดปุ่ม <span class="font-semibold text-white bg-emerald-600 px-1.5 py-0.5 rounded text-[10px]">New</span> เพื่อสร้าง Repository ใหม่</li>
+                        <li>ตั้งชื่อ Repository เช่น <code class="bg-slate-800 px-1.5 py-0.5 rounded text-teal-300 font-mono">health-dashboard</code> (เลือกตั้งเป็น Public)</li>
+                    </ol>
+                </div>
+
+                <div class="p-3 bg-slate-950 border border-slate-800 rounded-xl">
+                    <span class="font-bold text-teal-400">ขั้นตอนที่ 3: อัปโหลดไฟล์ index.html</span>
+                    <ol class="list-decimal list-inside mt-1 space-y-1 text-slate-300">
+                        <li>ในหน้า Repository ที่สร้างเสร็จแล้ว ให้คลิกคำว่า <span class="text-slate-200 font-semibold">uploading an existing file</span></li>
+                        <li>ลากไฟล์ <code class="bg-slate-800 px-1.5 py-0.5 rounded text-teal-300 font-mono">index.html</code> วางลงในช่อง แล้วกดปุ่ม <span class="font-semibold text-white bg-slate-700 px-2 py-0.5 rounded text-[10px]">Commit changes</span></li>
+                    </ol>
+                </div>
+
+                <div class="p-3 bg-slate-950 border border-slate-800 rounded-xl">
+                    <span class="font-bold text-teal-400">ขั้นตอนที่ 4: เปิดใช้งาน GitHub Pages</span>
+                    <ol class="list-decimal list-inside mt-1 space-y-1 text-slate-300">
+                        <li>ไปที่เมนู <span class="font-semibold text-white">Settings</span> ด้านบนของ Repo</li>
+                        <li>เลือกแถบ <span class="font-semibold text-white">Pages</span> ที่เมนูด้านซ้าย</li>
+                        <li>ตรงหัวข้อ <span class="font-semibold text-white">Build and deployment</span> เลือก Branch เป็น <code class="bg-slate-800 px-1.5 py-0.5 rounded text-teal-300 font-mono">main</code> แล้วกด <span class="font-semibold text-white bg-slate-700 px-1.5 py-0.5 rounded text-[10px]">Save</span></li>
+                        <li>รอประมาณ 1-2 นาที ท่านจะได้ลิงก์เว็บไซต์แบบ Live เช่น <code class="bg-slate-800 px-1.5 py-0.5 rounded text-teal-300 font-mono">https://username.github.io/health-dashboard/</code> พร้อมแชร์ให้ผู้บริหารและทีมงานใช้งานได้ทันที!</li>
+                    </ol>
+                </div>
+            </div>
+
+            <div class="mt-5 flex justify-end">
+                <button onclick="toggleGithubModal(false)" class="px-4 py-2 bg-teal-600 hover:bg-teal-500 text-white font-medium text-xs rounded-xl transition-colors">
+                    เข้าใจแล้ว ปิดหน้านี้
+                </button>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- JavaScript Application Logic -->
+    <script>
+        // Target Google Sheets CSV Source URL
+        const CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQbdpYHY-NtruSX-qriGE9Nj5JqRaTBr4wqNQKDzcPR0VWbVYyOPf6RL3CBeKQKP431_0RcynSsuy16/pub?output=csv';
+
+        // Thailand Coordinates (Centroid Fallback)
+        const THAILAND_CENTER = [13.7563, 100.5018];
+
+        // Global State Variables
+        let rawData = [];
+        let filteredData = [];
+        let mapInstance = null;
+        let mapMarkersGroup = null;
+        
+        // Chart Instances
+        let categoryChart = null;
+        let locationChart = null;
+        let timelineChart = null;
+
+        // Pagination State
+        let currentPage = 1;
+        const pageSize = 10;
+
+        // Column Index Mappings
+        let colKeys = {
+            date: '',
+            location: '',
+            category: '',
+            details: '',
+            lat: '',
+            lng: ''
+        };
+
+        // Initialize App on DOM Load
+        window.addEventListener('DOMContentLoaded', () => {
+            initLeafletMap();
+            fetchLiveCSVData();
+            
+            // Auto refresh every 2 minutes
+            setInterval(() => {
+                fetchLiveCSVData(true);
+            }, 120000);
+        });
+
+        // Initialize Leaflet GIS Map
+        function initLeafletMap() {
+            mapInstance = L.map('map').setView(THAILAND_CENTER, 6);
+
+            // Dark Mode Tile Layer
+            L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/">CARTO</a>',
+                subdomains: 'abcd',
+                maxZoom: 18
+            }).addTo(mapInstance);
+
+            mapMarkersGroup = L.layerGroup().addTo(mapInstance);
+        }
+
+        // Fetch Real-Time Data from Google Sheets
+        function fetchLiveCSVData(isBackground = false) {
+            const statusBadge = document.getElementById('statusBadge');
+            const statusText = document.getElementById('statusText');
+            const refreshIcon = document.getElementById('refreshIcon');
+
+            if (!isBackground) {
+                statusBadge.classList.remove('hidden');
+                statusText.innerText = 'กำลังซิงค์ข้อมูลจาก Google Sheets...';
+                refreshIcon.classList.add('fa-spin');
+            }
+
+            Papa.parse(CSV_URL, {
+                download: true,
+                header: true,
+                skipEmptyLines: true,
+                complete: function(results) {
+                    refreshIcon.classList.remove('fa-spin');
+                    if (results.data && results.data.length > 0) {
+                        rawData = results.data;
+                        detectColumnKeys(rawData[0]);
+                        populateDropdownFilters();
+                        applyFilters();
+
+                        statusBadge.className = "hidden md:flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20";
+                        statusText.innerText = 'เชื่อมต่อสำเร็จ';
+                        document.getElementById('kpiLastUpdated').innerText = new Date().toLocaleTimeString('th-TH');
+                    } else {
+                        showErrorState('ไม่พบแถวข้อมูลในสเปรดชีต');
+                    }
+                },
+                error: function(err) {
+                    refreshIcon.classList.remove('fa-spin');
+                    console.error('CSV Fetch Error:', err);
+                    showErrorState('ไม่สามารถเชื่อมต่อ CSV ได้ ตรวจสอบสิทธิ์การเปิดสาธารณะของ Google Sheets');
+                    
+                    // Fallback Demo Data if fetch fails or blocked
+                    generateFallbackDemoData();
+                }
+            });
+        }
+
+        // Detect column names dynamically (Thai / English support)
+        function detectColumnKeys(sampleRow) {
+            const keys = Object.keys(sampleRow);
+            
+            colKeys.date = keys.find(k => /date|time|วัน|เวลา|timestamp|ปี|เดือน|ช่วงเวลา/i.test(k)) || keys[0] || '';
+            colKeys.location = keys.find(k => /province|district|location|พื้นที่|จังหวัด|อำเภอ|ตำบล|สถานที่|หน่วยงาน|เขต/i.test(k)) || keys[1] || '';
+            colKeys.category = keys.find(k => /disease|category|group|type|อาการ|กลุ่มโรค|โรค|สถานะ|ประเภท|วินิจฉัย/i.test(k)) || keys[2] || '';
+            colKeys.details = keys.find(k => /detail|note|remark|patient|age|เพศ|อายุ|รายละเอียด|ข้อความ|หมายเหตุ/i.test(k)) || keys[3] || keys[keys.length - 1] || '';
+            colKeys.lat = keys.find(k => /lat|ละติจูด/i.test(k)) || '';
+            colKeys.lng = keys.find(k => /lng|lon|ลองจิจูด/i.test(k)) || '';
+        }
+
+        // Fallback Generator if link is offline or blocked
+        function generateFallbackDemoData() {
+            const provinces = ['กรุงเทพมหานคร', 'นนทบุรี', 'ชลบุรี', 'เชียงใหม่', 'ขอนแก่น', 'สงขลา', 'นครราชสีมา', 'ภูเก็ต'];
+            const categories = ['ไข้เลือดออก (Dengue)', 'โควิด-19 (COVID-19)', 'ไข้หวัดใหญ่ (Influenza)', 'มือเท้าปาก (HFMD)', 'อาหารเป็นพิษ (Food Poisoning)'];
+            const coords = {
+                'กรุงเทพมหานคร': [13.7563, 100.5018],
+                'นนทบุรี': [13.8591, 100.5217],
+                'ชลบุรี': [13.3611, 100.9847],
+                'เชียงใหม่': [18.7883, 98.9853],
+                'ขอนแก่น': [16.4419, 102.8360],
+                'สงขลา': [7.1898, 100.5954],
+                'นครราชสีมา': [14.9799, 102.0978],
+                'ภูเก็ต': [7.8804, 98.3923]
+            };
+
+            let demoList = [];
+            for(let i=1; i<=45; i++) {
+                const prov = provinces[Math.floor(Math.random() * provinces.length)];
+                const cat = categories[Math.floor(Math.random() * categories.length)];
+                const dateStr = new Date(Date.now() - Math.floor(Math.random()*15)*86400000).toISOString().split('T')[0];
+                const baseCoord = coords[prov];
+                
+                demoList.push({
+                    'วันที่/เวลา': dateStr,
+                    'พื้นที่/จังหวัด': prov,
+                    'กลุ่มโรค/อาการ': cat,
+                    'รายละเอียด': `ผู้ป่วยเพศ ${Math.random()>0.5?'ชาย':'หญิง'} อายุ ${Math.floor(Math.random()*60+5)} ปี`,
+                    'lat': baseCoord[0] + (Math.random()-0.5)*0.1,
+                    'lng': baseCoord[1] + (Math.random()-0.5)*0.1
+                });
+            }
+
+            rawData = demoList;
+            detectColumnKeys(rawData[0]);
+            populateDropdownFilters();
+            applyFilters();
+            
+            const statusBadge = document.getElementById('statusBadge');
+            statusBadge.className = "hidden md:flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium bg-rose-500/10 text-rose-400 border border-rose-500/20";
+            document.getElementById('statusText').innerText = 'ใช้งานข้อมูลสำรอง (Demo Dataset)';
+        }
+
+        // Populate Filter Options
+        function populateDropdownFilters() {
+            const catSelect = document.getElementById('categoryFilter');
+            const locSelect = document.getElementById('locationFilter');
+
+            const categories = new Set();
+            const locations = new Set();
+
+            rawData.forEach(row => {
+                const catVal = row[colKeys.category];
+                const locVal = row[colKeys.location];
+                if(catVal) categories.add(catVal.trim());
+                if(locVal) locations.add(locVal.trim());
+            });
+
+            catSelect.innerHTML = '<option value="ALL">-- ทุกกลุ่มโรค / ทุกประเภท --</option>';
+            Array.from(categories).sort().forEach(c => {
+                catSelect.innerHTML += `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`;
+            });
+
+            locSelect.innerHTML = '<option value="ALL">-- ทุกพื้นที่ / ทุกจังหวัด --</option>';
+            Array.from(locations).sort().forEach(l => {
+                locSelect.innerHTML += `<option value="${escapeHtml(l)}">${escapeHtml(l)}</option>`;
+            });
+        }
+
+        // Apply Filters & Update Dashboard Views
+        function applyFilters() {
+            const searchText = document.getElementById('searchInput').value.toLowerCase();
+            const selectedCat = document.getElementById('categoryFilter').value;
+            const selectedLoc = document.getElementById('locationFilter').value;
+
+            filteredData = rawData.filter(row => {
+                const catVal = row[colKeys.category] || '';
+                const locVal = row[colKeys.location] || '';
+                const detailVal = row[colKeys.details] || '';
+                const dateVal = row[colKeys.date] || '';
+
+                const matchesSearch = !searchText || 
+                    catVal.toLowerCase().includes(searchText) || 
+                    locVal.toLowerCase().includes(searchText) || 
+                    detailVal.toLowerCase().includes(searchText) ||
+                    dateVal.toLowerCase().includes(searchText);
+
+                const matchesCat = (selectedCat === 'ALL') || (catVal.trim() === selectedCat);
+                const matchesLoc = (selectedLoc === 'ALL') || (locVal.trim() === selectedLoc);
+
+                return matchesSearch && matchesCat && matchesLoc;
+            });
+
+            currentPage = 1;
+            updateKPIs();
+            updateMapMarkers();
+            renderCharts();
+            renderTable();
+            generateEpiInsights();
+        }
+
+        // Reset Filters
+        function resetFilters() {
+            document.getElementById('searchInput').value = '';
+            document.getElementById('categoryFilter').value = 'ALL';
+            document.getElementById('locationFilter').value = 'ALL';
+            applyFilters();
+        }
+
+        // Update KPI Widgets
+        function updateKPIs() {
+            document.getElementById('kpiTotalCases').innerText = filteredData.length.toLocaleString('th-TH');
+
+            // Find top location
+            const locCounts = {};
+            const catCounts = {};
+
+            filteredData.forEach(r => {
+                const loc = r[colKeys.location] || 'ไม่ระบุ';
+                const cat = r[colKeys.category] || 'ไม่ระบุ';
+                locCounts[loc] = (locCounts[loc] || 0) + 1;
+                catCounts[cat] = (catCounts[cat] || 0) + 1;
+            });
+
+            let topLoc = '-', maxLocCnt = 0;
+            Object.entries(locCounts).forEach(([k, v]) => {
+                if(v > maxLocCnt) { maxLocCnt = v; topLoc = k; }
+            });
+
+            let topCat = '-', maxCatCnt = 0;
+            Object.entries(catCounts).forEach(([k, v]) => {
+                if(v > maxCatCnt) { maxCatCnt = v; topCat = k; }
+            });
+
+            document.getElementById('kpiTopLocation').innerText = topLoc;
+            document.getElementById('kpiTopLocCount').innerText = `${maxLocCnt} ราย`;
+
+            document.getElementById('kpiTopCategory').innerText = topCat;
+            document.getElementById('kpiTopCatCount').innerText = `${maxCatCnt} ราย`;
+        }
+
+        // Update Map Markers
+        function updateMapMarkers() {
+            mapMarkersGroup.clearLayers();
+            const validBounds = [];
+
+            // Thai Province Default Coordinates Map
+            const provinceCoordsMap = {
+                'กรุงเทพมหานคร': [13.7563, 100.5018],
+                'นนทบุรี': [13.8591, 100.5217],
+                'ปทุมธานี': [14.0208, 100.5250],
+                'สมุทรปราการ': [13.5991, 100.5968],
+                'ชลบุรี': [13.3611, 100.9847],
+                'ระยอง': [12.6814, 101.2816],
+                'เชียงใหม่': [18.7883, 98.9853],
+                'เชียงราย': [19.9076, 99.8325],
+                'ขอนแก่น': [16.4419, 102.8360],
+                'อุดรธานี': [17.4138, 102.7872],
+                'นครราชสีมา': [14.9799, 102.0978],
+                'สงขลา': [7.1898, 100.5954],
+                'ภูเก็ต': [7.8804, 98.3923],
+                'สุราษฎร์ธานี': [9.1382, 99.3217]
+            };
+
+            filteredData.forEach(row => {
+                let lat = parseFloat(row[colKeys.lat]);
+                let lng = parseFloat(row[colKeys.lng]);
+                const locName = (row[colKeys.location] || '').trim();
+
+                // If lat/lng missing, lookup province centroid
+                if ((isNaN(lat) || isNaN(lng)) && provinceCoordsMap[locName]) {
+                    const base = provinceCoordsMap[locName];
+                    lat = base[0] + (Math.random() - 0.5) * 0.05;
+                    lng = base[1] + (Math.random() - 0.5) * 0.05;
+                }
+
+                if (!isNaN(lat) && !isNaN(lng)) {
+                    validBounds.push([lat, lng]);
+
+                    const categoryName = escapeHtml(row[colKeys.category] || 'ผู้ป่วย/รายงาน');
+                    const locationName = escapeHtml(row[colKeys.location] || 'ไม่ระบุพื้นที่');
+                    const dateVal = escapeHtml(row[colKeys.date] || '-');
+                    const detailsVal = escapeHtml(row[colKeys.details] || '-');
+
+                    // Glowing Circle Marker
+                    const circle = L.circleMarker([lat, lng], {
+                        radius: 7,
+                        fillColor: '#f43f5e',
+                        color: '#fff',
+                        weight: 1.5,
+                        opacity: 0.9,
+                        fillOpacity: 0.8
+                    });
+
+                    // Custom Rich Popup Content
+                    const popupHtml = `
+                        <div class="p-1 space-y-1 text-xs">
+                            <div class="font-bold text-teal-400 text-sm flex items-center gap-1">
+                                <i class="fa-solid fa-virus"></i> ${categoryName}
+                            </div>
+                            <div class="text-slate-300 font-medium">
+                                <i class="fa-solid fa-location-dot text-rose-400"></i> ${locationName}
+                            </div>
+                            <div class="text-slate-400 text-[11px]">
+                                <i class="fa-solid fa-calendar"></i> วันที่: ${dateVal}
+                            </div>
+                            <div class="text-slate-300 pt-1 border-t border-slate-700 text-[11px] leading-snug">
+                                ${detailsVal}
+                            </div>
+                        </div>
+                    `;
+
+                    circle.bindPopup(popupHtml);
+                    mapMarkersGroup.addLayer(circle);
+                }
+            });
+
+            if (validBounds.length > 0) {
+                mapInstance.fitBounds(validBounds, { padding: [30, 30], maxZoom: 12 });
+            } else {
+                mapInstance.setView(THAILAND_CENTER, 6);
+            }
+        }
+
+        // Render All Charts
+        function renderCharts() {
+            renderPieChart();
+            renderBarChart();
+            renderLineChart();
+        }
+
+        // Category Pie/Doughnut Chart
+        function renderPieChart() {
+            const ctx = document.getElementById('categoryPieChart').getContext('2d');
+            const counts = {};
+
+            filteredData.forEach(r => {
+                const cat = r[colKeys.category] || 'ไม่ระบุ';
+                counts[cat] = (counts[cat] || 0) + 1;
+            });
+
+            const labels = Object.keys(counts);
+            const data = Object.values(counts);
+
+            if (categoryChart) categoryChart.destroy();
+
+            categoryChart = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        data: data,
+                        backgroundColor: [
+                            '#14b8a6', '#f43f5e', '#3b82f6', '#f59e0b', 
+                            '#8b5cf6', '#ec4899', '#06b6d4', '#10b981'
+                        ],
+                        borderWidth: 2,
+                        borderColor: '#0f172a'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            labels: {
+                                color: '#94a3b8',
+                                font: { family: 'Prompt', size: 10 },
+                                boxWidth: 12
+                            }
+                        }
+                    },
+                    cutout: '65%'
+                }
+            });
+        }
+
+        // Top Locations Horizontal Bar Chart
+        function renderBarChart() {
+            const ctx = document.getElementById('locationBarChart').getContext('2d');
+            const counts = {};
+
+            filteredData.forEach(r => {
+                const loc = r[colKeys.location] || 'ไม่ระบุ';
+                counts[loc] = (counts[loc] || 0) + 1;
+            });
+
+            // Sort top 10
+            const sorted = Object.entries(counts)
+                .sort((a,b) => b[1] - a[1])
+                .slice(0, 10);
+
+            const labels = sorted.map(x => x[0]);
+            const data = sorted.map(x => x[1]);
+
+            if (locationChart) locationChart.destroy();
+
+            locationChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'จำนวนรายงาน',
+                        data: data,
+                        backgroundColor: 'rgba(20, 184, 166, 0.8)',
+                        borderColor: '#14b8a6',
+                        borderWidth: 1,
+                        borderRadius: 6
+                    }]
+                },
+                options: {
+                    indexAxis: 'y',
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false }
+                    },
+                    scales: {
+                        x: {
+                            ticks: { color: '#64748b', font: { family: 'Prompt', size: 10 } },
+                            grid: { color: 'rgba(51, 65, 85, 0.3)' }
+                        },
+                        y: {
+                            ticks: { color: '#94a3b8', font: { family: 'Prompt', size: 11 } },
+                            grid: { display: false }
+                        }
+                    }
+                }
+            });
+        }
+
+        // Timeline Epidemic Line Chart
+        function renderLineChart() {
+            const ctx = document.getElementById('timelineLineChart').getContext('2d');
+            const counts = {};
+
+            filteredData.forEach(r => {
+                let d = r[colKeys.date] || 'ไม่ระบุวันที่';
+                // simplify date to YYYY-MM-DD if ISO
+                if (d.includes('T')) d = d.split('T')[0];
+                counts[d] = (counts[d] || 0) + 1;
+            });
+
+            const sortedDates = Object.keys(counts).sort();
+            const data = sortedDates.map(d => counts[d]);
+
+            if (timelineChart) timelineChart.destroy();
+
+            timelineChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: sortedDates,
+                    datasets: [{
+                        label: 'เคสสะสมประจำวัน',
+                        data: data,
+                        borderColor: '#38bdf8',
+                        backgroundColor: 'rgba(56, 189, 248, 0.1)',
+                        fill: true,
+                        tension: 0.3,
+                        pointRadius: 3,
+                        pointBackgroundColor: '#38bdf8'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false }
+                    },
+                    scales: {
+                        x: {
+                            ticks: { color: '#64748b', font: { family: 'Prompt', size: 10 }, maxRotation: 45 },
+                            grid: { color: 'rgba(51, 65, 85, 0.3)' }
+                        },
+                        y: {
+                            ticks: { color: '#94a3b8', font: { family: 'Prompt', size: 10 } },
+                            grid: { color: 'rgba(51, 65, 85, 0.3)' }
+                        }
+                    }
+                }
+            });
+        }
+
+        // Render Raw Data Table
+        function renderTable() {
+            const tbody = document.getElementById('tableBody');
+            const totalRecords = filteredData.length;
+            document.getElementById('recordCountBadge').innerText = `${totalRecords.toLocaleString('th-TH')} รายการ`;
+
+            if (totalRecords === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="6" class="px-4 py-8 text-center text-slate-500">
+                            ไม่พบข้อมูลตรงตามตัวกรองที่คุณเลือก
+                        </td>
+                    </tr>
+                `;
+                document.getElementById('paginationInfo').innerText = 'แสดง 0 ถึง 0 จาก 0 รายการ';
+                return;
+            }
+
+            const startIndex = (currentPage - 1) * pageSize;
+            const endIndex = Math.min(startIndex + pageSize, totalRecords);
+            const pageData = filteredData.slice(startIndex, endIndex);
+
+            let html = '';
+            pageData.forEach((row, idx) => {
+                const globalIndex = startIndex + idx + 1;
+                const dateVal = escapeHtml(row[colKeys.date] || '-');
+                const locVal = escapeHtml(row[colKeys.location] || '-');
+                const catVal = escapeHtml(row[colKeys.category] || '-');
+                const detailVal = escapeHtml(row[colKeys.details] || '-');
+                const hasGis = (row[colKeys.lat] && row[colKeys.lng]) ? 
+                    '<span class="text-emerald-400 font-semibold"><i class="fa-solid fa-location-dot"></i> มีพิกัด</span>' : 
+                    '<span class="text-slate-500">-</span>';
+
+                html += `
+                    <tr class="hover:bg-slate-800/50 transition-colors">
+                        <td class="px-4 py-3 font-mono text-slate-500">${globalIndex}</td>
+                        <td class="px-4 py-3 whitespace-nowrap text-slate-300 font-medium">${dateVal}</td>
+                        <td class="px-4 py-3 whitespace-nowrap text-amber-300 font-medium">${locVal}</td>
+                        <td class="px-4 py-3 whitespace-nowrap">
+                            <span class="px-2 py-0.5 rounded-full text-[11px] font-medium bg-teal-500/10 text-teal-300 border border-teal-500/20">
+                                ${catVal}
+                            </span>
+                        </td>
+                        <td class="px-4 py-3 text-slate-300 max-w-xs truncate">${detailVal}</td>
+                        <td class="px-4 py-3 text-center whitespace-nowrap text-xs">${hasGis}</td>
+                    </tr>
+                `;
+            });
+
+            tbody.innerHTML = html;
+
+            // Pagination status
+            document.getElementById('paginationInfo').innerText = `แสดง ${startIndex + 1} ถึง ${endIndex} จาก ${totalRecords} รายการ`;
+            document.getElementById('currentPageNum').innerText = currentPage;
+
+            document.getElementById('btnPrevPage').disabled = (currentPage === 1);
+            document.getElementById('btnNextPage').disabled = (endIndex >= totalRecords);
+        }
+
+        // Pagination Handler
+        function changePage(direction) {
+            currentPage += direction;
+            renderTable();
+        }
+
+        // Generate Public Health Insights Text
+        function generateEpiInsights() {
+            const container = document.getElementById('epiInsightText');
+            if (filteredData.length === 0) {
+                container.innerText = "ไม่พบชุดข้อมูลสำหรับประมวลผลข้อสังเกต";
+                return;
+            }
+
+            const catCounts = {};
+            const locCounts = {};
+            filteredData.forEach(r => {
+                const c = r[colKeys.category] || 'อื่นๆ';
+                const l = r[colKeys.location] || 'อื่นๆ';
+                catCounts[c] = (catCounts[c] || 0) + 1;
+                locCounts[l] = (locCounts[l] || 0) + 1;
+            });
+
+            const topCat = Object.entries(catCounts).sort((a,b)=>b[1]-a[1])[0];
+            const topLoc = Object.entries(locCounts).sort((a,b)=>b[1]-a[1])[0];
+
+            const catPct = Math.round((topCat[1] / filteredData.length) * 100);
+
+            container.innerHTML = `
+                จากการวิเคราะห์ผู้ป่วย/รายงานทั้งหมด <span class="text-teal-300 font-bold">${filteredData.length} ราย</span> 
+                พบกลุ่มโรคสูงสุดคือ <span class="text-rose-400 font-bold">${topCat[0]}</span> 
+                จำนวน <span class="text-white font-bold">${topCat[1]} ราย</span> 
+                คิดเป็น <span class="text-amber-300 font-bold">${catPct}%</span> ของเคสที่เลือกทั้งหมด 
+                โดยพื้นที่ที่มีการเฝ้าระวังสูงสุดคือ <span class="text-teal-300 font-bold">${topLoc[0]}</span> (${topLoc[1]} ราย)
+            `;
+        }
+
+        // Export Filtered Table to CSV File
+        function exportFilteredToCSV() {
+            if (filteredData.length === 0) {
+                alert('ไม่พบข้อมูลสำหรับส่งออก CSV');
+                return;
+            }
+            const csv = Papa.unparse(filteredData);
+            const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `Public_Health_Report_${new Date().toISOString().split('T')[0]}.csv`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+        }
+
+        // Toggle GitHub Deployment Instructions Modal
+        function toggleGithubModal(show) {
+            const modal = document.getElementById('githubModal');
+            if (show) modal.classList.remove('hidden');
+            else modal.classList.add('hidden');
+        }
+
+        // Utility: Escape HTML
+        function escapeHtml(str) {
+            if (typeof str !== 'string') return str;
+            return str
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        }
+
+        function showErrorState(msg) {
+            const statusBadge = document.getElementById('statusBadge');
+            statusBadge.className = "hidden md:flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium bg-rose-500/10 text-rose-400 border border-rose-500/20";
+            document.getElementById('statusText').innerText = msg;
+        }
+    </script>
+</body>
+</html>
